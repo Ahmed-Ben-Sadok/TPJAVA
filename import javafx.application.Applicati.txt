@@ -1,0 +1,311 @@
+import javafx.application.Application;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.stage.Stage;
+import javafx.collections.*;
+import javafx.geometry.Pos;
+
+import java.io.File;
+import java.sql.*;
+
+public class App extends Application {
+    private TableView<Etudiant> table = new TableView<>();
+    private ObservableList<Etudiant> data = FXCollections.observableArrayList();
+
+    private TextField tfNom = new TextField();
+    private TextField tfPrenom = new TextField();
+    private TextField tfEmail = new TextField();
+
+    private Connection conn;
+
+    @Override
+    public void start(Stage primaryStage) throws Exception {
+        connectToDB();
+        loadData();
+        setupTable();
+
+        primaryStage.setTitle("Dashboard Étudiants - JavaFX + JDBC");
+        primaryStage.setScene(new Scene(createMainLayout(), 800, 600));
+        primaryStage.show();
+    }
+
+    private void connectToDB() throws SQLException {
+        String url = "jdbc:mysql://localhost:3306/db_etudiants";
+        String user = "root";
+        String password = ""; // adapte si nécessaire
+        conn = DriverManager.getConnection(url, user, password);
+    }
+
+    private void loadData() {
+        data.clear();
+        try (Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery("SELECT * FROM Table_Etudiants");
+            while (rs.next()) {
+                data.add(new Etudiant(
+                        rs.getInt("id"),
+                        rs.getString("nom"),
+                        rs.getString("prenom"),
+                        rs.getString("email")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void setupTable() {
+        TableColumn<Etudiant, Integer> colId = new TableColumn<>("IDENT");
+        colId.setCellValueFactory(c -> c.getValue().idProperty().asObject());
+
+        TableColumn<Etudiant, String> colNom = new TableColumn<>("Nom");
+        colNom.setCellValueFactory(c -> c.getValue().nomProperty());
+
+        TableColumn<Etudiant, String> colPrenom = new TableColumn<>("Prénom");
+        colPrenom.setCellValueFactory(c -> c.getValue().prenomProperty());
+
+        TableColumn<Etudiant, String> colEmail = new TableColumn<>("Email");
+        colEmail.setCellValueFactory(c -> c.getValue().emailProperty());
+
+        table.getColumns().addAll(colId, colNom, colPrenom, colEmail);
+   
+        table.setItems(data);
+    }
+
+    private VBox createMainLayout() {
+       
+
+        File file = new File("/home/chebba/Desktop/photos/logojfx.png");
+          Image img = new Image(file.toURI().toString());
+          ImageView imageView= new ImageView();
+        imageView.setImage(img);
+        imageView.setFitWidth(50); // largeur de 100 pixels
+        imageView.setPreserveRatio(true); // conserve le ratio largeur/hauteur
+       
+       
+        Label title_text = new Label("GESTION DES ETUDIANTS");
+        title_text.setStyle("-fx-font-weight: bold; -fx-font-size: 18px;");
+       
+        VBox title = new VBox(10, imageView, title_text, new Separator(), new Region());
+        title.setAlignment(Pos.CENTER);
+   
+       
+        VBox labelNom = new VBox(10, new Label("NOM"), tfNom);
+        VBox labelPrenom = new VBox(10, new Label("PRENOM"),tfPrenom);
+        VBox labelEmail = new VBox(10, new Label("EMAIL"), tfEmail);
+       
+        HBox Hfields = new HBox(10, labelNom, labelPrenom, labelEmail);
+       
+        tfNom.setPromptText("Taper le Nom");
+        tfPrenom.setPromptText("Prénom");
+        tfEmail.setPromptText("Email");
+
+        Button btnAdd = new Button("Ajouter");
+        Button btnUpdate = new Button("Modifier");
+        Button btnDelete = new Button("Supprimer");
+
+        btnAdd.setOnAction(e -> insertEtudiant());
+        btnUpdate.setOnAction(e -> updateEtudiant());
+        btnDelete.setOnAction(e -> deleteEtudiant());
+
+        Button btnDetails = new Button("Afficher Étudiant par ID");
+        btnDetails.setOnAction(e -> new EtudiantDetailsWindow(conn).show());
+        HBox buttons = new HBox(10, btnAdd, btnUpdate, btnDelete, btnDetails);
+
+       
+        VBox layout = new VBox(10, title, Hfields, buttons, new Region(), new Region(), table);
+        layout.setPadding(new javafx.geometry.Insets(10));
+
+        table.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            if (selected != null) {
+                tfNom.setText(selected.getNom());
+                tfPrenom.setText(selected.getPrenom());
+                tfEmail.setText(selected.getEmail());
+            }
+        });
+
+        return layout;
+    }
+
+
+    private void insertEtudiant() {
+        String sql =
+                "INSERT INTO Table_Etudiants (nom, prenom, email) "
+                + "VALUES (?, ?, ?)";
+       
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, tfNom.getText());
+            stmt.setString(2, tfPrenom.getText());
+            stmt.setString(3, tfEmail.getText());
+            stmt.executeUpdate();
+            loadData();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void updateEtudiant() {
+        Etudiant selected = table.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+
+        String sql = "UPDATE Table_Etudiants SET nom=?, prenom=?, email=? WHERE id=?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, tfNom.getText());
+            stmt.setString(2, tfPrenom.getText());
+            stmt.setString(3, tfEmail.getText());
+            stmt.setInt(4, selected.getId());
+            stmt.executeUpdate();
+            loadData();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void deleteEtudiant() {
+        Etudiant selected = table.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+
+        String sql = "DELETE FROM Table_Etudiants WHERE id=?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, selected.getId());
+            stmt.executeUpdate();
+            loadData();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
+
+
+
+
+
+package com.issat.gest_etudiants;
+
+import javafx.beans.property.*;
+
+public class Etudiant {
+private IntegerProperty id;
+private StringProperty nom, prenom, email;
+
+public Etudiant(int id, String nom, String prenom, String email) {
+this.id = new SimpleIntegerProperty(id);
+this.nom = new SimpleStringProperty(nom);
+this.prenom = new SimpleStringProperty(prenom);
+this.email = new SimpleStringProperty(email);
+}
+
+public int getId() { return id.get(); }
+public String getNom() { return nom.get(); }
+public String getPrenom() { return prenom.get(); }
+public String getEmail() { return email.get(); }
+
+public IntegerProperty idProperty() { return id; }
+public StringProperty nomProperty() { return nom; }
+public StringProperty prenomProperty() { return prenom; }
+public StringProperty emailProperty() { return email; }
+}
+
+
+
+
+
+
+
+
+
+
+package com.issat.gest_etudiants;
+
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.Stage;
+import java.sql.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import java.io.File;
+
+
+public class EtudiantDetailsWindow extends Stage {
+    private final ComboBox<Integer> comboBox = new ComboBox<>();
+    private final Label lblNom = new Label("Nom : ");
+    private final Label lblPrenom = new Label("Prénom : ");
+    private final Label lblEmail = new Label("Email : ");
+    private final ImageView imageView = new ImageView();
+
+    private final Connection conn;
+
+    public EtudiantDetailsWindow(Connection conn) {
+        this.conn = conn;
+        setTitle("Détails Étudiant");
+
+        VBox vbox = new VBox(10);
+        vbox.setPadding(new javafx.geometry.Insets(10));
+
+        comboBox.setPromptText("Sélectionner un ID");
+        comboBox.setOnAction(e -> loadEtudiantDetails(comboBox.getValue()));
+
+        vbox.getChildren().addAll(
+                new Label("ID Étudiant :"),
+                comboBox,
+                lblNom,
+                lblPrenom,
+                lblEmail
+            );
+
+        loadIds();
+        HBox hbox = new HBox(10);
+        hbox.getChildren().addAll(vbox, imageView);
+
+        setScene(new Scene(hbox, 600, 300));
+    }
+
+    private void loadIds() {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT id FROM Table_Etudiants")) {
+            while (rs.next()) {
+                comboBox.getItems().add(rs.getInt("id"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadEtudiantDetails(int id) {
+        String sql = "SELECT * FROM Table_Etudiants WHERE id=?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                lblNom.setText("Nom : " + rs.getString("nom"));
+                lblPrenom.setText("Prénom : " + rs.getString("prenom"));
+                lblEmail.setText("Email : " + rs.getString("email"));
+
+                String photoPath = "/home/chebba/Desktop/photos/"+rs.getString("url_photo");
+                if (photoPath != null && !photoPath.isEmpty()) {
+                    File file = new File(photoPath);
+                    if (file.exists()) {
+
+                      Image img = new Image(file.toURI().toString());
+                        imageView.setImage(img);
+                    } else {
+                        imageView.setImage(null);
+                        System.out.println("Image non trouvée: " + photoPath);
+                    }
+                } else {
+                    imageView.setImage(null);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+}
